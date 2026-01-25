@@ -7,7 +7,7 @@ from nanovllm.layers.activation import SiluAndMul
 from nanovllm.layers.attention import Attention
 from nanovllm.layers.layernorm import RMSNorm
 from nanovllm.layers.linear import QKVParallelLinear, MergedColumnParallelLinear, RowParallelLinear
-from nanovllm.layers.rotary_embedding import get_rope
+from nanovllm.layers.rotary_embedding import RotaryEmbedding, get_rope
 from nanovllm.layers.embed_head import VocabParallelEmbedding, ParallelLMHead
 
 
@@ -26,32 +26,35 @@ class Qwen3Attention(nn.Module):
         rope_scaling: tuple | None = None,
     ) -> None:
         super().__init__()
-        tp_size = dist.get_world_size()
-        self.total_num_heads = num_heads
+        tp_size: int = dist.get_world_size()
+        
+        self.total_num_heads: int = num_heads
         assert self.total_num_heads % tp_size == 0
-        self.num_heads = self.total_num_heads // tp_size
-        self.total_num_kv_heads = num_kv_heads
+        self.num_heads: int = self.total_num_heads // tp_size
+        
+        self.total_num_kv_heads: int = num_kv_heads
         assert self.total_num_kv_heads % tp_size == 0
-        self.num_kv_heads = self.total_num_kv_heads // tp_size
-        self.head_dim = head_dim or hidden_size // self.total_num_heads
-        self.q_size = self.num_heads * self.head_dim
-        self.kv_size = self.num_kv_heads * self.head_dim
-        self.scaling = self.head_dim ** -0.5
-        self.qkv_bias = qkv_bias
+        self.num_kv_heads: int = self.total_num_kv_heads // tp_size
+        
+        self.head_dim: int = head_dim or hidden_size // self.total_num_heads
+        self.q_size: int = self.num_heads * self.head_dim
+        self.kv_size: int = self.num_kv_heads * self.head_dim
+        self.scaling: float = self.head_dim ** -0.5
+        self.qkv_bias: bool = qkv_bias
 
-        self.qkv_proj = QKVParallelLinear(
+        self.qkv_proj: QKVParallelLinear = QKVParallelLinear(
             hidden_size,
             self.head_dim,
             self.total_num_heads,
             self.total_num_kv_heads,
             bias=qkv_bias,
         )
-        self.o_proj = RowParallelLinear(
+        self.o_proj: RowParallelLinear = RowParallelLinear(
             self.total_num_heads * self.head_dim,
             hidden_size,
             bias=False,
         )
-        self.rotary_emb = get_rope(
+        self.rotary_emb: RotaryEmbedding = get_rope(
             self.head_dim,
             rotary_dim=self.head_dim,
             max_position=max_position,
@@ -123,7 +126,7 @@ class Qwen3DecoderLayer(nn.Module):
         config: Qwen3Config,
     ) -> None:
         super().__init__()
-        self.self_attn = Qwen3Attention(
+        self.self_attn: Qwen3Attention = Qwen3Attention(
             hidden_size=config.hidden_size,
             num_heads=config.num_attention_heads,
             num_kv_heads=config.num_key_value_heads,
@@ -165,8 +168,8 @@ class Qwen3Model(nn.Module):
         config: Qwen3Config,
     ) -> None:
         super().__init__()
-        self.embed_tokens = VocabParallelEmbedding(config.vocab_size, config.hidden_size)
-        self.layers = nn.ModuleList([Qwen3DecoderLayer(config) for _ in range(config.num_hidden_layers)])
+        self.embed_tokens: VocabParallelEmbedding = VocabParallelEmbedding(config.vocab_size, config.hidden_size)
+        self.layers: nn.ModuleList = nn.ModuleList([Qwen3DecoderLayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(

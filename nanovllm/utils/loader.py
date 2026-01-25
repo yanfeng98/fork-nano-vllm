@@ -26,3 +26,25 @@ def load_model(model: nn.Module, path: str):
                     param = model.get_parameter(weight_name)
                     weight_loader = getattr(param, "weight_loader", default_weight_loader)
                     weight_loader(param, f.get_tensor(weight_name))
+
+if __name__ == "__main__":
+    from rich import print as rprint
+    import torch.distributed as dist
+    from transformers import AutoConfig
+    from nanovllm.models.qwen3 import Qwen3ForCausalLM
+    
+    model_path = os.path.expanduser("~/huggingface/Qwen3-0.6B/")
+    hf_config = AutoConfig.from_pretrained(model_path)
+    print("--- hf_config ---")
+    rprint(hf_config)
+
+    dist.init_process_group("nccl", "tcp://localhost:2333", world_size=1, rank=0)
+    torch.cuda.set_device(0)
+        
+    default_dtype = torch.get_default_dtype()
+    torch.set_default_dtype(hf_config.dtype)
+    torch.set_default_device("cuda")
+
+    model = Qwen3ForCausalLM(hf_config)
+    print("--- model ---")
+    rprint(model)

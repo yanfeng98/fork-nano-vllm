@@ -18,6 +18,7 @@ dependencies = [
     # "flash-attn",
     "xxhash",
     "modelscope",
+    "rich>=14.3.1",
 ]
 
 [project.urls]

@@ -12,30 +12,33 @@ class VocabParallelEmbedding(nn.Module):
         self,
         num_embeddings: int,
         embedding_dim: int,
-    ):
+    ) -> None:
         super().__init__()
-        self.tp_rank = dist.get_rank()
-        self.tp_size = dist.get_world_size()
+        self.tp_rank: int = dist.get_rank()
+        self.tp_size: int = dist.get_world_size()
         assert num_embeddings % self.tp_size == 0
-        self.num_embeddings = num_embeddings
-        self.num_embeddings_per_partition = self.num_embeddings // self.tp_size
-        self.vocab_start_idx = self.num_embeddings_per_partition * self.tp_rank
-        self.vocab_end_idx = self.vocab_start_idx + self.num_embeddings_per_partition
-        self.weight = nn.Parameter(torch.empty(self.num_embeddings_per_partition, embedding_dim))
+        self.num_embeddings: int = num_embeddings
+        self.num_embeddings_per_partition: int = self.num_embeddings // self.tp_size
+        self.vocab_start_idx: int = self.num_embeddings_per_partition * self.tp_rank
+        self.vocab_end_idx: int = self.vocab_start_idx + self.num_embeddings_per_partition
+        
+        self.weight: nn.Parameter = nn.Parameter(torch.empty(self.num_embeddings_per_partition, embedding_dim))
         self.weight.weight_loader = self.weight_loader
 
-    def weight_loader(self, param: nn.Parameter, loaded_weight: torch.Tensor):
-        param_data = param.data
-        shard_size = param_data.size(0)
-        start_idx = self.tp_rank * shard_size
-        loaded_weight = loaded_weight.narrow(0, start_idx, shard_size)
+    def weight_loader(self, param: nn.Parameter, loaded_weight: torch.Tensor) -> None:
+        param_data: torch.Tensor = param.data
+        shard_size: int = param_data.size(0)
+        start_idx: int = self.tp_rank * shard_size
+        
+        # Row Parallelism（行并行）
+        loaded_weight: torch.Tensor = loaded_weight.narrow(0, start_idx, shard_size)
         param_data.copy_(loaded_weight)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.tp_size > 1:
-            mask = (x >= self.vocab_start_idx) & (x < self.vocab_end_idx)
+            mask: torch.Tensor = (x >= self.vocab_start_idx) & (x < self.vocab_end_idx)
             x = mask * (x - self.vocab_start_idx)
-        y = F.embedding(x, self.weight)
+        y: torch.Tensor = F.embedding(x, self.weight)
         if self.tp_size > 1:
             y = mask.unsqueeze(1) * y
             dist.all_reduce(y)
